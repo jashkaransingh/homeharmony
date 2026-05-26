@@ -1,31 +1,31 @@
 # HomeHarmony
 
-Subleasing platform built for students. Find and post short-term rentals, chat with landlords in real time, and pay securely through Stripe.
+full stack subleasing platform for students. find or post rentals, chat with landlords in real time, and pay through Stripe. lease documents get verified with OCR before listings go live.
 
-## Features
+## features
 
-- **Listing search** — filter by city, price range, bedrooms, and availability
-- **Real-time messaging** — WebSocket chat between buyers and sellers via Supabase subscriptions
-- **Stripe Connect** — secure payouts directly to landlord bank accounts
-- **OCR lease verification** — Google Cloud Vision validates lease documents before listings go live
-- **Walk Score integration** — transit and walkability scores on every listing
+- filter listings by city, price, bedrooms, availability
+- real-time chat between buyers and sellers via Supabase postgres_changes
+- Stripe Connect for landlord payouts straight to bank accounts
+- Google Cloud Vision OCR for lease document verification
+- Walk Score integration on every listing
 
-## Architecture
+## architecture
 
 ```
 React + TypeScript (Vite)
-        │
-        ▼
-Supabase (PostgreSQL + Auth + Realtime)
-        │
-        ├── Listings table ──── CRUD, image storage
-        ├── Messages table ──── realtime subscriptions
-        └── Edge Functions ──── Stripe Connect, OCR verification
+   │
+   ▼
+Supabase (Postgres + Auth + Realtime + Storage)
+   │
+   ├─ listings table for CRUD and image storage
+   ├─ messages table with realtime subscriptions
+   └─ edge functions for Stripe Connect and OCR verification
 ```
 
-## Realtime Messaging
+## realtime messaging
 
-Uses Supabase's `postgres_changes` subscription — no polling, instant delivery. Messages are marked read automatically when the receiver opens the chat window.
+uses Supabase's `postgres_changes` subscription. no polling, instant delivery. messages get marked read automatically when the receiver opens the chat.
 
 ```typescript
 supabase
@@ -34,26 +34,24 @@ supabase
   .subscribe()
 ```
 
-## Setup
+## the hard part
+
+Stripe Connect onboarding. partial failures, webhook retries, idempotency keys, what happens when a landlord starts the flow and bails halfway through. every edge case felt like discovering something Stripe forgot to document. webhooks fire twice and you need to handle that. accounts can sit in restricted state without it being obvious. payouts can fail silently if requirements aren't met. spent more time on payment edge cases than the rest of the app combined. I read payment integrations differently now.
+
+## run it locally
 
 ```bash
 git clone https://github.com/jashkaransingh/homeharmony
 cd homeharmony
 npm install
-cp .env.example .env  # add your Supabase and Stripe keys
+cp .env.example .env
 npm run dev
 ```
 
-**Required env vars:**
-```
-VITE_SUPABASE_URL
-VITE_SUPABASE_ANON_KEY
-VITE_STRIPE_PUBLISHABLE_KEY
-```
+env vars
 
-## Stack
+`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_STRIPE_PUBLISHABLE_KEY`
 
-- **React + TypeScript** — frontend, Vite for bundling
-- **Supabase** — PostgreSQL, auth, realtime subscriptions, edge functions
-- **Stripe Connect** — payment processing and landlord payouts
-- **Google Cloud Vision** — OCR-based lease document verification
+## stack
+
+React, TypeScript, Vite, Supabase (Postgres + Realtime + Edge Functions), Stripe Connect, Google Cloud Vision.
