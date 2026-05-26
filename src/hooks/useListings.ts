@@ -1,41 +1,64 @@
-import { useEffect, useState } from "react";
-import { supabase } from "../lib/supabase";
-import type { Listing } from "../types/listing";
+import { useState, useEffect } from 'react'
+import { supabase } from '../lib/supabase'
+import type { Listing } from '../types/listing'
 
-export function useListings(filters?: { minPrice?: number; maxPrice?: number }) {
-  const [listings, setListings] = useState<Listing[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+interface Filters {
+  city?: string
+  minPrice?: number
+  maxPrice?: number
+  bedrooms?: number
+  availableFrom?: string
+}
+
+export function useListings(filters: Filters = {}) {
+  const [listings, setListings] = useState<Listing[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     async function fetchListings() {
-      setLoading(true);
+      setLoading(true)
+      setError(null)
+
       let query = supabase
-        .from("listings")
-        .select(`
-          *,
-          owner:profiles(full_name, avatar_url)
-        `)
-        .order("created_at", { ascending: false });
+        .from('listings')
+        .select('*')
+        .order('created_at', { ascending: false })
 
-      if (filters?.minPrice !== undefined) {
-        query = query.gte("price_per_month", filters.minPrice);
-      }
-      if (filters?.maxPrice !== undefined) {
-        query = query.lte("price_per_month", filters.maxPrice);
-      }
+      if (filters.city) query = query.ilike('city', `%${filters.city}%`)
+      if (filters.minPrice) query = query.gte('price', filters.minPrice)
+      if (filters.maxPrice) query = query.lte('price', filters.maxPrice)
+      if (filters.bedrooms) query = query.eq('bedrooms', filters.bedrooms)
+      if (filters.availableFrom) query = query.lte('available_from', filters.availableFrom)
 
-      const { data, error } = await query;
-      if (error) {
-        setError(error.message);
+      const { data, error: err } = await query
+
+      if (err) {
+        setError(err.message)
       } else {
-        setListings(data ?? []);
+        setListings(data ?? [])
       }
-      setLoading(false);
+      setLoading(false)
     }
 
-    fetchListings();
-  }, [filters?.minPrice, filters?.maxPrice]);
+    fetchListings()
+  }, [filters.city, filters.minPrice, filters.maxPrice, filters.bedrooms, filters.availableFrom])
 
-  return { listings, loading, error };
+  return { listings, loading, error }
+}
+
+export async function createListing(
+  listing: Omit<Listing, 'id' | 'created_at' | 'owner_id' | 'verified'>
+) {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+
+  const { data, error } = await supabase
+    .from('listings')
+    .insert({ ...listing, owner_id: user.id, owner_email: user.email, verified: false })
+    .select()
+    .single()
+
+  if (error) throw error
+  return data as Listing
 }
