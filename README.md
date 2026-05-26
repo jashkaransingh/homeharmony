@@ -1,25 +1,38 @@
-# homeharmony
+# HomeHarmony
 
-Subleasing platform built for college students. Browse listings with map-based search, message sellers in real-time, and pay securely through Stripe Connect with seller payouts.
+Subleasing platform built for students. Find and post short-term rentals, chat with landlords in real time, and pay securely through Stripe.
 
 ## Features
 
-- **Listings** — post properties with photos, map pin, and Walk Score integration
-- **Real-time chat** — WebSocket + Supabase subscriptions for instant buyer-seller messaging
-- **Payments** — Stripe Connect onboarding for sellers, secure checkout for buyers
-- **Lease verification** — Google Cloud Vision OCR to validate uploaded lease documents
-- **Auth** — Supabase Auth with email/password and Google OAuth
+- **Listing search** — filter by city, price range, bedrooms, and availability
+- **Real-time messaging** — WebSocket chat between buyers and sellers via Supabase subscriptions
+- **Stripe Connect** — secure payouts directly to landlord bank accounts
+- **OCR lease verification** — Google Cloud Vision validates lease documents before listings go live
+- **Walk Score integration** — transit and walkability scores on every listing
 
-## Stack
+## Architecture
 
-| Layer | Tech |
-|-------|------|
-| Frontend | React 18, TypeScript, Tailwind CSS |
-| Backend | Supabase (PostgreSQL + Auth + Realtime) |
-| Payments | Stripe Connect |
-| Maps | Google Maps API + Walk Score API |
-| OCR | Google Cloud Vision |
-| Deploy | Vercel (frontend) |
+```
+React + TypeScript (Vite)
+        │
+        ▼
+Supabase (PostgreSQL + Auth + Realtime)
+        │
+        ├── Listings table ──── CRUD, image storage
+        ├── Messages table ──── realtime subscriptions
+        └── Edge Functions ──── Stripe Connect, OCR verification
+```
+
+## Realtime Messaging
+
+Uses Supabase's `postgres_changes` subscription — no polling, instant delivery. Messages are marked read automatically when the receiver opens the chat window.
+
+```typescript
+supabase
+  .channel(`messages:${listingId}:${userId}`)
+  .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, handler)
+  .subscribe()
+```
 
 ## Setup
 
@@ -27,15 +40,20 @@ Subleasing platform built for college students. Browse listings with map-based s
 git clone https://github.com/jashkaransingh/homeharmony
 cd homeharmony
 npm install
-cp .env.example .env.local   # fill in Supabase + Stripe keys
+cp .env.example .env  # add your Supabase and Stripe keys
 npm run dev
 ```
 
-## Database schema
-
-```sql
-users        -- Supabase Auth users extended with profiles
-listings     -- Properties: address, price, photos, coords, owner_id
-messages     -- Buyer-seller chat: listing_id, sender_id, content, created_at
-payments     -- Stripe payment records: amount, status, listing_id
+**Required env vars:**
 ```
+VITE_SUPABASE_URL
+VITE_SUPABASE_ANON_KEY
+VITE_STRIPE_PUBLISHABLE_KEY
+```
+
+## Stack
+
+- **React + TypeScript** — frontend, Vite for bundling
+- **Supabase** — PostgreSQL, auth, realtime subscriptions, edge functions
+- **Stripe Connect** — payment processing and landlord payouts
+- **Google Cloud Vision** — OCR-based lease document verification
