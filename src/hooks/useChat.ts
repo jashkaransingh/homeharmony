@@ -1,66 +1,65 @@
-import { useEffect, useState, useCallback } from "react";
-import { supabase } from "../lib/supabase";
-import type { Message } from "../types/listing";
+import { useState, useEffect, useRef } from 'react'
+import { supabase } from '../lib/supabase'
+import type { Message } from '../types/listing'
 
-export function useChat(listingId: string, currentUserId: string) {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [loading, setLoading] = useState(true);
+export function useChat(listingId: string, receiverId: string) {
+  const [messages, setMessages] = useState<Message[]>([])
+  const [loading, setLoading] = useState(true)
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
 
-  // Initial load
   useEffect(() => {
-    async function loadMessages() {
+    async function init() {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
       const { data } = await supabase
-        .from("messages")
-        .select("*, sender:profiles(full_name)")
-        .eq("listing_id", listingId)
-        .order("created_at", { ascending: true });
-      setMessages(data ?? []);
-      setLoading(false);
+        .from('messages')
+        .select('*')
+        .eq('listing_id', listingId)
+        .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
+        .order('created_at', { ascending: true })
+
+      setMessages(data ?? [])
+      setLoading(false)
+
+      await supabase
+        .from('messages')
+        .update({ read: true })
+        .eq('listing_id', listingId)
+        .eq('receiver_id', user.id)
+        .eq('read', false)
+
+      channelRef.current = supabase
+        .channel(`messages:${listingId}:${user.id}`)
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `listing_id=eq.${listingId}`
+        }, (payload) => {
+          setMessages(prev => [...prev, payload.new as Message])
+        })
+        .subscribe()
     }
-    loadMessages();
-  }, [listingId]);
 
-  // Real-time subscription
-  useEffect(() => {
-    const channel = supabase
-      .channel(`listing-chat-${listingId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-          filter: `listing_id=eq.${listingId}`,
-        },
-        async (payload) => {
-          // Fetch the full message with sender profile
-          const { data } = await supabase
-            .from("messages")
-            .select("*, sender:profiles(full_name)")
-            .eq("id", payload.new.id)
-            .single();
-          if (data) {
-            setMessages((prev) => [...prev, data]);
-          }
-        }
-      )
-      .subscribe();
+    init()
+    return () => { channelRef.current?.unsubscribe() }
+  }, [listingId, receiverId])
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [listingId]);
+  async function sendMessage(content: string) {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
 
-  const sendMessage = useCallback(
-    async (content: string) => {
-      await supabase.from("messages").insert({
-        listing_id: listingId,
-        sender_id: currentUserId,
-        content: content.trim(),
-      });
-    },
-    [listingId, currentUserId]
-  );
+    const { error } = await supabase.from('messages').insert({
+      listing_id: listingId,
+      sender_id: user.id,
+      receiver_id: receiverId,
+      content,
+      read: false
+    })
 
-  return { messages, loading, sendMessage };
+    if (error) throw error
+  }
+
+  return { messages, loading, sendMessage }
 }
